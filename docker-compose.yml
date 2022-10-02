@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  db:
+    container_name: test-db
+    image: postgres:14-alpine
+    ports:
+      - "54321:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: test
+    healthcheck:
+      test: [ "CMD-SHELL", "test -d test -U test" ]
+      interval: 5s
+      retries: 5
+    restart: always
+
+  backend:
+    container_name: test-backend
+    build:
+      context: ./backend
+      dockerfile: ./Local.Dockerfile
+    command:
+      [
+        "./local_entrypoint.sh",
+        "python",
+        "manage.py",
+        "runserver",
+        "0.0.0.0:8800",
+      ]
+    volumes:
+      - ./backend:/app/backend
+    depends_on:
+      - db
+    ports:
+      - "8800:8800"
+
+volumes:
+  postgres_data:
