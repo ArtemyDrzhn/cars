@@ -42,34 +42,30 @@ class TreeTaskViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
         
         task_ct = ContentType.objects.get_for_model(Task)
 
-        def make_tasks_cte(cte):
-            # Базовый запрос - задачи, связанные напрямую с начальным объектом
-            base_query = TaskRelation.objects.filter(
+        # Создаем CTE, используя правильный подход для django-cte
+        tasks_cte = With.recursive(
+            lambda cte: TaskRelation.objects.filter(
                 content_type=content_type,
                 object_id=object_id
             ).values(
-                "task_id",
+                task_id=F("task_id"),
                 parent_task_id=Value(None, output_field=IntegerField()),
                 depth=Value(0, output_field=IntegerField())
-            )
+            ).union(
+                TaskRelation.objects.filter(
+                    content_type=task_ct,
+                    object_id__in=cte.col.task_id  # Это должно работать в новых версиях django-cte
+                ).values(
+                    task_id=F("task_id"),
+                    parent_task_id=F("object_id"),
+                    depth=cte.col.depth + 1
+                ),
+                all=True
+            ),
+            name="recursive_tasks"
+        )
 
-            # Рекурсивный запрос - находим задачи, которые связаны с задачами из CTE
-            # ИСПРАВЛЕНИЕ: используем Subquery вместо прямой ссылки на cte.col.task_id
-            recursive_query = TaskRelation.objects.filter(
-                content_type=task_ct,
-                object_id__in=Subquery(cte.queryset().values('task_id'))
-            ).values(
-                "task_id",
-                parent_task_id=F("object_id"),  # object_id здесь - это ID родительской задачи
-                depth=F("depth") + Value(1, output_field=IntegerField())  # Исправлено: F("depth") вместо cte.col.depth
-            )
-
-            return base_query.union(recursive_query, all=True)
-
-        # Создаем рекурсивный CTE
-        tasks_cte = With.recursive(make_tasks_cte)
-
-        # Финальный запрос - получаем полную информацию о задачах
+        # Финальный запрос
         final_qs = (
             Task.objects
             .with_cte(tasks_cte)
