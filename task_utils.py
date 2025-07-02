@@ -12,8 +12,8 @@ class TaskUtils:
     @staticmethod
     def get_root_tasks_from_object(content_type, object_id):
         """
-        Находит корневые Task'и, поднимаясь вверх по дереву от заданного объекта.
-        Возвращает задачи, с которых началась цепочка (у которых нет родителей).
+        Находит корневую Task, поднимаясь вверх по дереву от заданного объекта.
+        Возвращает одну задачу, с которой началась цепочка (у которой нет родителя).
         """
         def make_task_cte(cte):
             # Аннотируем задачи с parent_id (ищем родительскую задачу)
@@ -70,19 +70,23 @@ class TaskUtils:
             "filial",
             "filial__region", 
             "type"
-        )
+        ).first()  # Возвращаем только первую корневую задачу
 
     @staticmethod
     def get_tree_path_to_object(content_type, object_id):
         """
         Находит полный путь в дереве задач от корня до заданного объекта.
-        1. Находит корневые Task'и от объекта (используя функцию get_root_tasks_from_object)
-        2. От корней идет вниз и строит путь до исходного объекта (включительно)
+        1. Находит корневую Task от объекта (используя функцию get_root_tasks_from_object)
+        2. От корня идет вниз и строит путь до исходного объекта (включительно)
         3. Не идет дальше исходного объекта вниз по дереву
         """
-        # Сначала получаем корневые задачи
-        root_tasks = TaskUtils.get_root_tasks_from_object(content_type, object_id)
-        root_task_ids = list(root_tasks.values_list('id', flat=True))
+        # Сначала получаем корневую задачу
+        root_task = TaskUtils.get_root_tasks_from_object(content_type, object_id)
+        if not root_task:
+            # Если корневая задача не найдена, возвращаем пустой QuerySet
+            return Task.objects.none()
+        
+        root_task_ids = [root_task.id]
         
         # ID задач, связанных с нашим объектом (конечная точка)
         target_task_ids = list(TaskRelation.objects.filter(
